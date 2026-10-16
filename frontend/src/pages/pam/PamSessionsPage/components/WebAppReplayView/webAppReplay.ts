@@ -10,6 +10,8 @@ type RecordedAction = {
   kind: "mouse" | "key" | "select" | "navigate" | "request" | "blocked" | "nav" | "resize";
   action?: string;
   target?: string;
+  x?: number;
+  y?: number;
   key?: string;
   value?: string;
   url?: string;
@@ -32,6 +34,9 @@ export type TimelineKind =
   | "other";
 
 export type TimelineEntry = { ms: number; kind: TimelineKind; label: string };
+
+// Where the pointer was, in the recorded page's CSS pixels (the same scale as the frames)
+export type CursorPoint = { ms: number; x: number; y: number; click: boolean };
 
 export const MASKED_KEY = "[MASKED]";
 
@@ -93,6 +98,7 @@ const decodeBase64Json = (data: string): RecordedAction | null => {
 export const parseWebAppRecording = (events: unknown[]) => {
   const frames: ReplayFrame[] = [];
   const timeline: TimelineEntry[] = [];
+  const cursor: CursorPoint[] = [];
   let typing: { ms: number; text: string } | null = null;
 
   const endTyping = () => {
@@ -124,7 +130,10 @@ export const parseWebAppRecording = (events: unknown[]) => {
       }
       return;
     }
-    if (action.kind === "mouse" && action.action === "move") return;
+    if (action.kind === "mouse") {
+      cursor.push({ ms, x: action.x ?? 0, y: action.y ?? 0, click: action.action === "down" });
+      if (action.action === "move") return;
+    }
 
     endTyping();
     const described = describeAction(action);
@@ -134,7 +143,8 @@ export const parseWebAppRecording = (events: unknown[]) => {
 
   frames.sort((a, b) => a.ms - b.ms);
   timeline.sort((a, b) => a.ms - b.ms);
-  return { frames, timeline };
+  cursor.sort((a, b) => a.ms - b.ms);
+  return { frames, timeline, cursor };
 };
 
 // Index of the last item at or before ms, or -1 when ms precedes them all.

@@ -80,3 +80,17 @@ test("formatReplayTime", () => {
   expect(formatReplayTime(0)).toBe("0:00");
   expect(formatReplayTime(72_400)).toBe("1:12");
 });
+
+test("keeps every pointer position, including moves, for drawing the cursor", () => {
+  const { cursor, timeline } = parseWebAppRecording([
+    action(1, { kind: "mouse", action: "move", x: 10, y: 20 }),
+    action(2, { kind: "mouse", action: "down", x: 30, y: 40, target: "link" }),
+    action(2.1, { kind: "mouse", action: "up", x: 30, y: 40 })
+  ]);
+  expect(cursor).toEqual([
+    { ms: 1000, x: 10, y: 20, click: false },
+    { ms: 2000, x: 30, y: 40, click: true },
+    { ms: 2100, x: 30, y: 40, click: false }
+  ]);
+  expect(timeline.map((e) => e.label)).toEqual(["Clicked link"]);
+});

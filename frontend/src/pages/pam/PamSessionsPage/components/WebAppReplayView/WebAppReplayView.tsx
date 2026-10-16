@@ -1,19 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  ExpandIcon,
   Loader2Icon,
   MaximizeIcon,
   MinimizeIcon,
   PauseIcon,
   PlayIcon,
   RotateCcwIcon,
-  SearchIcon,
-  ShrinkIcon
+  SearchIcon
 } from "lucide-react";
 
 import { IconButton, InputGroup, InputGroupAddon, InputGroupInput } from "@app/components/v3";
 
 import {
+  CursorPoint,
   formatReplayTime,
   indexAtOrBefore,
   parseWebAppRecording,
@@ -108,6 +107,46 @@ const KIND_STYLE: Record<TimelineKind, string> = {
 };
 
 const SPEEDS = [1, 2, 4];
+const CLICK_RIPPLE_MS = 500;
+const CURSOR_GLIDE_MAX_MS = 300;
+const MIN_TIMELINE_HEIGHT = 160;
+
+// A standard pointer arrow, tip at the origin
+const CURSOR_PATH = new Path2D("M0 0 L0 17 L4.5 13 L7.5 20 L10 19 L7 12 L12.5 12 Z");
+
+const drawCursor = (ctx: CanvasRenderingContext2D, cursor: CursorPoint[], ms: number) => {
+  const index = indexAtOrBefore(cursor, ms);
+  if (index < 0) return;
+  let { x, y } = cursor[index];
+  // Moves are recorded about ten times a second, so glide between them rather than jump
+  const next = cursor[index + 1];
+  if (next && !next.click && next.ms - cursor[index].ms <= CURSOR_GLIDE_MAX_MS) {
+    const t = (ms - cursor[index].ms) / (next.ms - cursor[index].ms);
+    x += (next.x - x) * t;
+    y += (next.y - y) * t;
+  }
+
+  for (let i = index; i >= 0 && ms - cursor[i].ms < CLICK_RIPPLE_MS; i -= 1) {
+    if (cursor[i].click) {
+      const progress = (ms - cursor[i].ms) / CLICK_RIPPLE_MS;
+      ctx.beginPath();
+      ctx.arc(cursor[i].x, cursor[i].y, 8 + progress * 18, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(244, 63, 94, ${1 - progress})`;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      break;
+    }
+  }
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 1.2;
+  ctx.fill(CURSOR_PATH);
+  ctx.stroke(CURSOR_PATH);
+  ctx.restore();
+};
 
 const base64ToBytes = (data: string) => {
   const raw = atob(data);
@@ -117,14 +156,15 @@ const base64ToBytes = (data: string) => {
 };
 
 export const WebAppReplayView = ({ events, isStreaming = false, isLoading = false }: Props) => {
-  const { frames, timeline } = useMemo(() => parseWebAppRecording(events), [events]);
+  const { frames, timeline, cursor } = useMemo(() => parseWebAppRecording(events), [events]);
   const durationMs = Math.max(frames.at(-1)?.ms ?? 0, timeline.at(-1)?.ms ?? 0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const playerRef = useRef<HTMLDivElement | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const bitmapRef = useRef<ImageBitmap | null>(null);
+  const [timelineHeight, setTimelineHeight] = useState(MIN_TIMELINE_HEIGHT);
   const [currentMs, setCurrentMsState] = useState(0);
   const currentMsRef = useRef(0);
   const setCurrentMs = useCallback((ms: number) => {
@@ -139,11 +179,27 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
   const frameIndex = indexAtOrBefore(frames, currentMs);
   const activeEntry = indexAtOrBefore(timeline, currentMs);
 
-  // Draw the frame showing at the current moment; a slow decode never paints over a later seek.
+  // The frame showing at the current moment, with the pointer drawn over it
+  const drawScene = useCallback(
+    (ms: number) => {
+      const canvas = canvasRef.current;
+      const bitmap = bitmapRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !bitmap || !ctx) return;
+      if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+      }
+      ctx.drawImage(bitmap, 0, 0);
+      drawCursor(ctx, cursor, ms);
+    },
+    [cursor]
+  );
+
+  // A slow decode never paints over a later seek
   useEffect(() => {
     const frame = frames[Math.max(frameIndex, 0)];
-    const canvas = canvasRef.current;
-    if (!frame || !canvas) return undefined;
+    if (!frame) return undefined;
     let cancelled = false;
     createImageBitmap(new Blob([base64ToBytes(frame.data)], { type: "image/jpeg" }))
       .then((bitmap) => {
@@ -151,12 +207,9 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
           bitmap.close();
           return;
         }
-        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
-          canvas.width = bitmap.width;
-          canvas.height = bitmap.height;
-        }
-        canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
-        bitmap.close();
+        bitmapRef.current?.close();
+        bitmapRef.current = bitmap;
+        drawScene(currentMsRef.current);
       })
       .catch(() => {
         // A frame that fails to decode is skipped; the next one replaces it.
@@ -164,7 +217,36 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
     return () => {
       cancelled = true;
     };
-  }, [frames, frameIndex]);
+  }, [frames, frameIndex, drawScene]);
+
+  useEffect(() => {
+    drawScene(currentMs);
+  }, [currentMs, drawScene]);
+
+  useEffect(
+    () => () => {
+      bitmapRef.current?.close();
+      bitmapRef.current = null;
+    },
+    []
+  );
+
+  // The timeline fills whatever is left of the window under the player, so it never runs off the screen
+  useLayoutEffect(() => {
+    const fit = () => {
+      const list = listRef.current;
+      if (!list) return;
+      const { top } = list.getBoundingClientRect();
+      setTimelineHeight(Math.max(MIN_TIMELINE_HEIGHT, Math.floor(window.innerHeight - top - 24)));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    window.addEventListener("scroll", fit, true);
+    return () => {
+      window.removeEventListener("resize", fit);
+      window.removeEventListener("scroll", fit, true);
+    };
+  }, [frames.length]);
 
   useEffect(() => {
     if (!isPlaying) return undefined;
@@ -247,9 +329,7 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
     durationMs > 0 ? timeline.filter((e) => e.kind === "click").map((e) => e.ms) : [];
 
   return (
-    <div
-      className={`grid gap-4 ${isExpanded ? "grid-cols-1" : "lg:grid-cols-[minmax(0,1fr)_320px]"}`}
-    >
+    <div className="flex flex-col gap-4">
       <div
         ref={playerRef}
         className={`flex min-w-0 flex-col gap-3 ${isFullscreen ? "justify-center bg-black p-4" : ""}`}
@@ -264,11 +344,7 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
         >
           <canvas
             ref={canvasRef}
-            className={
-              isFullscreen || isExpanded
-                ? "max-h-[calc(100vh-6rem)] w-full object-contain"
-                : "max-h-[60vh] max-w-full"
-            }
+            className={`w-full object-contain ${isFullscreen ? "max-h-[calc(100vh-6rem)]" : "max-h-[55vh]"}`}
           />
           {isLoading && (
             <span className="absolute top-2 right-2 flex items-center gap-1.5 rounded bg-black/70 px-2 py-1 text-xs text-white">
@@ -314,18 +390,6 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
           <IconButton variant="ghost-muted" size="sm" onClick={() => seek(0)} aria-label="Restart">
             <RotateCcwIcon />
           </IconButton>
-          {!isFullscreen && (
-            <IconButton
-              variant="ghost-muted"
-              size="sm"
-              onClick={() => setIsExpanded((v) => !v)}
-              aria-label={
-                isExpanded ? "Show timeline beside the video" : "Expand video to full width"
-              }
-            >
-              {isExpanded ? <ShrinkIcon /> : <ExpandIcon />}
-            </IconButton>
-          )}
           <IconButton
             variant="ghost-muted"
             size="sm"
@@ -366,7 +430,8 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
         </div>
         <div
           ref={listRef}
-          className="relative max-h-[60vh] overflow-y-auto rounded-md border border-border"
+          className="relative overflow-y-auto rounded-md border border-border"
+          style={{ maxHeight: timelineHeight }}
         >
           {visibleEntries.length === 0 ? (
             <p className="p-4 text-center text-xs text-muted">No matching actions.</p>

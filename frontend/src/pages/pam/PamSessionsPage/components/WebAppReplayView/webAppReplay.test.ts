@@ -44,7 +44,7 @@ describe("parseWebAppRecording", () => {
     ]);
   });
 
-  test("groups keystrokes into one entry and shows masked keys as dots", () => {
+  test("groups keystrokes into one entry and hides how many masked keys were typed", () => {
     const { timeline } = parseWebAppRecording([
       key(1, "b"),
       key(1.1, "o"),
@@ -59,7 +59,7 @@ describe("parseWebAppRecording", () => {
     expect(timeline.map((e) => e.label)).toEqual([
       'Typed "bob"',
       "Clicked password field",
-      'Typed "••• ⏎"'
+      'Typed "•••• ⏎"'
     ]);
   });
 });

@@ -44,8 +44,12 @@ const KEY_GLYPHS: Record<string, string> = {
   Escape: " ⎋ "
 };
 
+// A run of masked keys shows as this one placeholder, however many keys were typed, so the replay doesn't
+// reveal a password's length
+const MASKED_PLACEHOLDER = "••••";
+
 const describeKey = (key: string) => {
-  if (key === MASKED_KEY) return "•";
+  if (key === MASKED_KEY) return MASKED_PLACEHOLDER;
   if (key.length === 1) return key;
   return KEY_GLYPHS[key] ?? "";
 };
@@ -82,7 +86,7 @@ const decodeBase64Json = (data: string): RecordedAction | null => {
 };
 
 // Splits a recording into the frames to play and a readable timeline. Keystrokes in a row become one "Typed"
-// entry, mouse moves are left out, and a masked key shows as a dot so a password's length is all that's seen.
+// entry, mouse moves are left out, and masked keys show as a fixed placeholder.
 export const parseWebAppRecording = (events: unknown[]) => {
   const frames: ReplayFrame[] = [];
   const timeline: TimelineEntry[] = [];
@@ -111,7 +115,10 @@ export const parseWebAppRecording = (events: unknown[]) => {
 
     if (action.kind === "key") {
       if (!typing) typing = { ms, text: "" };
-      typing.text += describeKey(action.key ?? "");
+      const described = describeKey(action.key ?? "");
+      if (!(described === MASKED_PLACEHOLDER && typing.text.endsWith(MASKED_PLACEHOLDER))) {
+        typing.text += described;
+      }
       return;
     }
     if (action.kind === "mouse" && action.action === "move") return;

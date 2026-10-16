@@ -12,6 +12,7 @@ import { RdpLauncher } from "./RdpLauncher";
 import { SessionAccessGate } from "./ReasonGate";
 import { useWebAccessSession } from "./useWebAccessSession";
 import { WebAccessStatusCard } from "./WebAccessStatusCard";
+import { WebAppContent } from "./WebAppContent";
 
 const TerminalContent = ({
   account,
@@ -137,6 +138,9 @@ const PageContent = () => {
           account.accountType === PamAccountType.ClickHouse
         ) {
           return <PamDataExplorerPage reason={reason} mfaSessionId={mfaSessionId} />;
+        }
+        if (account.accountType === PamAccountType.WebApp) {
+          return <WebAppContent account={account} reason={reason} mfaSessionId={mfaSessionId} />;
         }
         if (
           account.accountType === PamAccountType.Windows ||

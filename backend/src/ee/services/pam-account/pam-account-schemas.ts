@@ -1270,7 +1270,9 @@ export enum PamAccountAccessibilityIssue {
 }
 
 export const accountTypeRequiresRecording = (accountType: PamAccountType): boolean =>
-  accountType === PamAccountType.Windows || accountType === PamAccountType.WindowsAd;
+  accountType === PamAccountType.Windows ||
+  accountType === PamAccountType.WindowsAd ||
+  accountType === PamAccountType.WebApp;
 
 export const accountTypeRequiresGateway = (accountType: PamAccountType): boolean => {
   const config = ACCOUNT_TYPE_CONFIGS[accountType as TSupportedAccountType] as

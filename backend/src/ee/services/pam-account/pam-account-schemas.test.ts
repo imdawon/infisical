@@ -541,6 +541,7 @@ describe("applyForcedFields", () => {
 describe("getAccountAccessibilityIssues", () => {
   test("recording is only required for account types that stream to a bucket", () => {
     expect(accountTypeRequiresRecording(PamAccountType.Windows)).toBe(true);
+    expect(accountTypeRequiresRecording(PamAccountType.WebApp)).toBe(true);
     expect(accountTypeRequiresRecording(PamAccountType.Postgres)).toBe(false);
   });
 

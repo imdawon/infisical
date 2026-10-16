@@ -3,9 +3,11 @@ import { describe, expect, test } from "vitest";
 import {
   createMessageReader,
   decodeFrame,
+  encodeInput,
   MAX_MESSAGE_BYTES,
   MESSAGE_TYPE_EVENT,
-  MESSAGE_TYPE_FRAME
+  MESSAGE_TYPE_FRAME,
+  MESSAGE_TYPE_INPUT
 } from "./web-app-protocol";
 
 const encodeMessage = (type: number, payload: Uint8Array) => {
@@ -84,5 +86,16 @@ describe("web app viewer protocol", () => {
     const header = new Uint8Array(4);
     new DataView(header.buffer).setUint32(0, MAX_MESSAGE_BYTES + 1);
     expect(() => collect([header])).toThrow();
+  });
+
+  test("frames input as a single INPUT message the gateway can read", () => {
+    const input = { t: "nav", action: "back" } as const;
+    const received: { type: number; payload: Uint8Array }[] = [];
+    createMessageReader((type, payload) => received.push({ type, payload: payload.slice() }))(
+      encodeInput(input)
+    );
+    expect(received).toHaveLength(1);
+    expect(received[0].type).toBe(MESSAGE_TYPE_INPUT);
+    expect(JSON.parse(new TextDecoder().decode(received[0].payload))).toEqual(input);
   });
 });

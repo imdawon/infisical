@@ -2,10 +2,11 @@
 // [u32 big-endian length][u8 type][payload], where length counts the type byte.
 export const MESSAGE_TYPE_FRAME = 0x01;
 export const MESSAGE_TYPE_EVENT = 0x02;
+export const MESSAGE_TYPE_INPUT = 0x10;
 export const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
 export type GatewayEvent = {
-  kind: "ready" | "navigated" | "ended";
+  kind: "ready" | "navigated" | "ended" | "blocked";
   url?: string;
   w?: number;
   h?: number;
@@ -13,6 +14,32 @@ export type GatewayEvent = {
 };
 
 export type FrameMeta = { seq: number; ts: number; w: number; h: number };
+
+// The gateway accepts only these input shapes and drops anything else. Coordinates are in the remote page's CSS
+// pixels. Modifiers use CDP's bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8.
+export type WebAppInput =
+  | {
+      t: "mouse";
+      kind: "down" | "up" | "move";
+      x: number;
+      y: number;
+      button: "none" | "left" | "middle" | "right";
+      clickCount: number;
+      modifiers: number;
+    }
+  | { t: "wheel"; x: number; y: number; dx: number; dy: number }
+  | { t: "key"; kind: "down" | "up"; key: string; code: string; text: string; modifiers: number }
+  | { t: "resize"; w: number; h: number }
+  | { t: "nav"; action: "back" | "forward" | "reload" };
+
+export const encodeInput = (input: WebAppInput): ArrayBuffer => {
+  const json = new TextEncoder().encode(JSON.stringify(input));
+  const out = new Uint8Array(4 + 1 + json.length);
+  new DataView(out.buffer).setUint32(0, json.length + 1);
+  out[4] = MESSAGE_TYPE_INPUT;
+  out.set(json, 5);
+  return out.buffer;
+};
 
 // The backend pipes raw bytes, so a WebSocket message can hold part of a frame or several frames. This buffers
 // the stream and yields only complete messages.

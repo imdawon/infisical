@@ -7,10 +7,12 @@ import { apiRequest } from "@app/config/request";
 import {
   createMessageReader,
   decodeFrame,
+  encodeInput,
   FrameMeta,
   GatewayEvent,
   MESSAGE_TYPE_EVENT,
-  MESSAGE_TYPE_FRAME
+  MESSAGE_TYPE_FRAME,
+  WebAppInput
 } from "./web-app-protocol";
 
 const WEB_APP_SESSION_FAILED_MESSAGE = "Unable to start the web app session.";
@@ -32,6 +34,7 @@ export const useWebAppSession = ({ accountId, reason, mfaSessionId }: UseWebAppS
   const [error, setError] = useState<string | null>(null);
   const [endReason, setEndReason] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
+  const [blockedUrl, setBlockedUrl] = useState<string | null>(null);
 
   const teardown = useCallback(() => {
     const socket = socketRef.current;
@@ -49,6 +52,7 @@ export const useWebAppSession = ({ accountId, reason, mfaSessionId }: UseWebAppS
     setError(null);
     setEndReason(null);
     setCurrentUrl(null);
+    setBlockedUrl(null);
 
     const { data } = await apiRequest.post<{ ticket: string }>(
       `/api/v1/pam/accounts/${accountId}/web-access-ticket`,
@@ -94,6 +98,7 @@ export const useWebAppSession = ({ accountId, reason, mfaSessionId }: UseWebAppS
       if (type === MESSAGE_TYPE_EVENT) {
         const event = JSON.parse(new TextDecoder().decode(payload)) as GatewayEvent;
         if (event.kind === "navigated" && event.url) setCurrentUrl(event.url);
+        if (event.kind === "blocked" && event.url) setBlockedUrl(event.url);
         if (event.kind === "ended") setEndReason(event.reason ?? null);
       }
     });
@@ -148,5 +153,23 @@ export const useWebAppSession = ({ accountId, reason, mfaSessionId }: UseWebAppS
     connect().catch(handleConnectError);
   }, [connect, handleConnectError]);
 
-  return { canvasRef, status, error, endReason, currentUrl, disconnect, reconnect };
+  const sendInput = useCallback((input: WebAppInput) => {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) socket.send(encodeInput(input));
+  }, []);
+
+  const dismissBlocked = useCallback(() => setBlockedUrl(null), []);
+
+  return {
+    canvasRef,
+    status,
+    error,
+    endReason,
+    currentUrl,
+    blockedUrl,
+    dismissBlocked,
+    disconnect,
+    reconnect,
+    sendInput
+  };
 };

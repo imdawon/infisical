@@ -1,10 +1,12 @@
-import { TriangleAlert } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { ArrowLeft, ArrowRight, RotateCw, ShieldX, TriangleAlert, X } from "lucide-react";
 
 import { ContentLoader } from "@app/components/v2";
 import { Button } from "@app/components/v3";
 import { TPamAccount } from "@app/hooks/api/pam";
 
 import { DisconnectedScreen } from "./DisconnectedScreen";
+import { useWebAppInput } from "./useWebAppInput";
 import { useWebAppSession, WebAppSessionStatus } from "./useWebAppSession";
 import { WebAccessStatusCard } from "./WebAccessStatusCard";
 
@@ -28,17 +30,81 @@ const STATUS_DOT: Record<WebAppSessionStatus, string> = {
   error: "bg-danger"
 };
 
+const BLOCKED_NOTICE_MS = 6000;
+
+const NavButton = ({
+  label,
+  onClick,
+  children
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) => (
+  <button
+    type="button"
+    aria-label={label}
+    title={label}
+    onClick={onClick}
+    className="rounded p-1 text-muted hover:bg-foreground/10 hover:text-foreground"
+  >
+    {children}
+  </button>
+);
+
 export const WebAppContent = ({ account, reason, mfaSessionId }: WebAppContentProps) => {
-  const { canvasRef, status, error, endReason, currentUrl, disconnect, reconnect } =
-    useWebAppSession({ accountId: account.id, reason, mfaSessionId });
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const {
+    canvasRef,
+    status,
+    error,
+    endReason,
+    currentUrl,
+    blockedUrl,
+    dismissBlocked,
+    disconnect,
+    reconnect,
+    sendInput
+  } = useWebAppSession({ accountId: account.id, reason, mfaSessionId });
+
+  const isLive = status === "live";
+  useWebAppInput({ canvasRef, containerRef, isLive, sendInput });
+
+  useEffect(() => {
+    if (!blockedUrl) return undefined;
+    const timer = setTimeout(dismissBlocked, BLOCKED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [blockedUrl, dismissBlocked]);
 
   return (
     <div className="flex h-dvh w-screen flex-col bg-background">
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+      <div
+        ref={containerRef}
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden"
+      >
         <canvas
           ref={canvasRef}
-          className={`max-h-full max-w-full ${status === "live" ? "" : "invisible"}`}
+          tabIndex={0}
+          aria-label={`Remote browser for ${account.name}`}
+          className={`max-h-full max-w-full outline-none ${isLive ? "" : "invisible"}`}
         />
+        {blockedUrl && isLive && (
+          <div className="absolute top-3 left-1/2 z-10 flex max-w-[90%] -translate-x-1/2 items-center gap-2 rounded-md border border-danger/40 bg-card px-3 py-2 text-xs shadow">
+            <ShieldX className="size-4 shrink-0 text-danger" />
+            <span className="truncate">
+              Blocked <span className="font-mono">{blockedUrl}</span>. This account only allows its
+              own site.
+            </span>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={dismissBlocked}
+              className="text-muted hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
         {status === "starting" && (
           <ContentLoader text="Starting secure browser…" className="absolute inset-0 z-10 h-full" />
         )}
@@ -70,14 +136,30 @@ export const WebAppContent = ({ account, reason, mfaSessionId }: WebAppContentPr
         <span className="flex items-center gap-1.5">
           <span className={`inline-block size-2 rounded-full ${STATUS_DOT[status]}`} />
           <span className="text-muted">{STATUS_LABEL[status]}</span>
-          {status === "live" && (
-            <button
-              type="button"
-              onClick={disconnect}
-              className="ml-2 text-muted hover:text-danger"
-            >
-              End session
-            </button>
+          {isLive && (
+            <>
+              <span className="ml-2 flex items-center gap-0.5">
+                <NavButton label="Back" onClick={() => sendInput({ t: "nav", action: "back" })}>
+                  <ArrowLeft className="size-3.5" />
+                </NavButton>
+                <NavButton
+                  label="Forward"
+                  onClick={() => sendInput({ t: "nav", action: "forward" })}
+                >
+                  <ArrowRight className="size-3.5" />
+                </NavButton>
+                <NavButton label="Reload" onClick={() => sendInput({ t: "nav", action: "reload" })}>
+                  <RotateCw className="size-3.5" />
+                </NavButton>
+              </span>
+              <button
+                type="button"
+                onClick={disconnect}
+                className="ml-2 text-muted hover:text-danger"
+              >
+                End session
+              </button>
+            </>
           )}
         </span>
         <div className="flex min-w-0 items-center gap-4">

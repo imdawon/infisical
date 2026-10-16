@@ -1,0 +1,98 @@
+---
+title: "Web app accounts"
+sidebarTitle: "Web app"
+description: "Give users access to internal web apps in their browser, with every session recorded."
+---
+
+Web app accounts let users open an internal web app, such as an admin dashboard or a monitoring tool, from Infisical. The app opens in the user's browser and works as if the user were on your private network, without a VPN, a browser extension, or the CLI.
+
+The [gateway](/documentation/platform/gateways/overview) runs the app in its own isolated browser inside your network and streams the screen to the user. The user's browser receives only the picture of the page and sends back mouse and keyboard input, so the app's credentials and data never reach the user's device. Every [session](/documentation/platform/pam/sessions/overview) is recorded and can be replayed.
+
+## Prerequisites
+
+- A [gateway](/documentation/platform/gateways/overview) that can reach the web app, with Google Chrome or Chromium installed on the gateway's host (if the browser isn't in its default location, set `INFISICAL_PAM_BROWSER_PATH` to its path before you start the gateway)
+- A Web App [template](/documentation/platform/pam/templates/overview) that stores recordings in [your own S3 bucket](/documentation/platform/pam/sessions/external-storage), since recordings of web app sessions include video
+- If the web app requires sign-in, a username and password or a header value that grants access
+
+If **Account Templates** shows a callout that Web App has no template, select **Add default template** to create one.
+
+## Creating an account
+
+<Steps>
+  <Step>
+    Go to **Privileged Access Management** > **Accounts** and select **Add Account**.
+  </Step>
+  <Step>
+    Choose a [folder](/documentation/platform/pam/folders/overview), select a Web App template, and select **Next**.
+  </Step>
+  <Step>
+    Enter the connection details:
+
+    | Field | Description |
+    |-------|-------------|
+    | **Name** | A descriptive name (for example, `grafana-prod`) |
+    | **URL** | The app's address as the gateway reaches it, starting with `http://` or `https://` (for example, `http://grafana.internal:3000`) |
+    | **Gateway** | A gateway that can reach the URL |
+  </Step>
+  <Step>
+    Choose how the gateway signs in to the app:
+
+    | Sign-in method | When to use it |
+    |----------------|----------------|
+    | **None** | The app doesn't require sign-in, or users sign in themselves |
+    | **Basic Auth** | The app accepts a username and password with HTTP basic authentication |
+    | **Header** | The app expects a token in a request header. Enter the **Header Name** (for example, `Authorization` or `X-Api-Key`) and the **Header Value** |
+
+    The gateway adds the credential to each request it sends to the app, so users never see the credential.
+  </Step>
+  <Step>
+    Select **Create**. Infisical checks that the gateway can reach the app before it saves the account.
+  </Step>
+</Steps>
+
+## Connecting
+
+<Steps>
+  <Step>
+    Go to **Privileged Access Management** > **Accounts**, find the account, and select **Launch Session**.
+  </Step>
+  <Step>
+    Select **Connect in Browser**. The app opens in a new tab after a few seconds.
+  </Step>
+</Steps>
+
+Use the app as you would in any browser. The bar below the app shows the current address and has back, forward, and reload buttons. To end the session, select **End session**.
+
+A session can only reach the account's own site, which is the scheme, host, and port of its **URL**. If the app links to or loads anything from another site, the gateway blocks the request and the session shows which address it blocked.
+
+## What's recorded
+
+Each session's recording includes:
+
+- The pages the user saw, up to twice a second
+- Each element the user selected, by name
+- What the user typed, except in password fields, where the recording shows only that a password was typed
+- Each page the user opened
+- Each request the app made, with its method, address, and response status
+- Each request the gateway blocked
+
+The recording never includes request or response bodies or headers. Anything the app shows on screen is part of the recording, so if a page displays a secret, the recording shows it too.
+
+To replay a session, go to **Sessions**, select the session, and open the **Session Recording** tab. Select any entry in the activity list to jump to that moment in the recording.
+
+## Limitations
+
+- The gateway doesn't block WebSocket connections to other sites. If your app's pages open WebSocket connections, only allow apps you trust.
+- The gateway's browser uses its own TLS, which isn't FIPS-validated, even on a FIPS-compliant gateway.
+- Clipboard, file uploads, and file downloads aren't supported.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="monitor" href="/documentation/platform/pam/sessions/overview">
+    Monitor, terminate, and replay sessions.
+  </Card>
+  <Card title="External storage" icon="cloud" href="/documentation/platform/pam/sessions/external-storage">
+    Store recordings in your own S3 bucket.
+  </Card>
+</CardGroup>

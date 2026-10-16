@@ -678,7 +678,8 @@
                       "documentation/platform/pam/accounts/gcp-service-account",
                       "documentation/platform/pam/accounts/azure-cli",
                       "documentation/platform/pam/accounts/windows",
-                      "documentation/platform/pam/accounts/windows-ad"
+                      "documentation/platform/pam/accounts/windows-ad",
+                      "documentation/platform/pam/accounts/web-app"
                     ]
                   },
                   "documentation/platform/pam/access-requests/overview",

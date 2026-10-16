@@ -6,6 +6,7 @@ import {
   applyForcedFields,
   buildPamAccountTypeMetadata,
   collectCredentialSecrets,
+  extractGatewayTarget,
   gatewaySupportsAccountType,
   gatewaySupportsClickHouseNative,
   getAccountAccessibilityIssues,
@@ -628,3 +629,41 @@ describe("gatewaySupportsAccountType", () => {
     expect(gatewaySupportsAccountType(PamAccountType.WindowsAd, ["windows"])).toBe(true);
   });
 });
+
+describe("Web App accounts", () => {
+  test("accept only http and https URLs", () => {
+    for (const url of ["http://127.0.0.1:55490", "https://grafana.internal/dashboards"]) {
+      expect(() => validateConnectionDetails(PamAccountType.WebApp, { url })).not.toThrow();
+    }
+    for (const url of ["file:///etc/passwd", "javascript:alert(1)", "ftp://files.internal", "not a url", ""]) {
+      expect(() => validateConnectionDetails(PamAccountType.WebApp, { url })).toThrow();
+    }
+  });
+
+  test("need no stored secret with the none sign-in method", () => {
+    const credentials = validateCredentials(PamAccountType.WebApp, { authMethod: "none" });
+    expect(credentials).toEqual({ authMethod: "none" });
+    expect(isCredentialConfigured(PamAccountType.WebApp, { authMethod: "none" })).toBe(true);
+  });
+
+  test("route the gateway to the URL's host and port", async () => {
+    await expect(extractGatewayTarget(PamAccountType.WebApp, { url: "http://127.0.0.1:55490/admin" })).resolves.toEqual({
+      host: "127.0.0.1",
+      port: 55490
+    });
+    await expect(extractGatewayTarget(PamAccountType.WebApp, { url: "https://grafana.internal" })).resolves.toEqual({
+      host: "grafana.internal",
+      port: 443
+    });
+  });
+
+  test("advertise a URL field and a sign-in method select", () => {
+    const [webApp] = buildPamAccountTypeMetadata(new Set([PamAccountType.WebApp])).filter(
+      (t) => t.type === PamAccountType.WebApp
+    );
+    expect(webApp).toMatchObject({ name: "Web App", supportsWebAccess: true });
+    expect(webApp.connectionFields.map((f) => f.key)).toEqual(["url"]);
+    expect(webApp.credentialFields.find((f) => f.key === "authMethod")).toMatchObject({ widget: "select" });
+  });
+});
+

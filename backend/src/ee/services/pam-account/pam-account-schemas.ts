@@ -969,6 +969,44 @@ export const ACCOUNT_TYPE_CONFIGS = {
         tooltip: "A client secret for the service principal. Stored encrypted and never returned in read responses."
       }
     }
+  },
+
+  [PamAccountType.WebApp]: {
+    name: "Web App",
+    icon: "Web.png",
+    connectionDetails: z.object({
+      url: z
+        .string()
+        .trim()
+        .url()
+        .max(500)
+        .refine(
+          (v) => {
+            try {
+              return ["http:", "https:"].includes(new URL(v).protocol);
+            } catch {
+              return false;
+            }
+          },
+          { message: "URL must start with http:// or https://" }
+        )
+    }),
+    credentials: z.discriminatedUnion("authMethod", [z.object({ authMethod: z.literal("none") })]),
+    sanitizedCredentials: z.object({
+      authMethod: z.string().optional()
+    }),
+    ui: {
+      url: {
+        label: "URL",
+        tooltip:
+          "The address of the internal web app, as the gateway reaches it (for example http://grafana.internal:3000)."
+      },
+      authMethod: {
+        label: "Sign-in Method",
+        defaultValue: "none",
+        options: [{ label: "None", value: "none" }]
+      }
+    }
   }
 } as const satisfies Partial<
   Record<
@@ -1086,7 +1124,8 @@ export const extractGatewayTarget = async (
       const { host, port, nativePort } = validated as { host: string; port?: number; nativePort?: number };
       return { host, port: port ?? nativePort };
     }
-    case PamAccountType.Kubernetes: {
+    case PamAccountType.Kubernetes:
+    case PamAccountType.WebApp: {
       const { url } = validated as { url: string };
       const parsed = new URL(url);
       const defaultPort = parsed.protocol === "http:" ? 80 : 443;

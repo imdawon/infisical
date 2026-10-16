@@ -194,11 +194,18 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
   }, [timeline, filter, search]);
 
   // Keep the current entry in view while playing, without fighting a user scrolling the list when paused.
+  // Only the list itself scrolls: scrollIntoView would also scroll the sheet and pull the video out of view.
   useEffect(() => {
-    if (!isPlaying || activeEntry < 0) return;
-    listRef.current
-      ?.querySelector(`[data-entry="${activeEntry}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    if (!isPlaying || activeEntry < 0 || !list) return;
+    const row = list.querySelector<HTMLElement>(`[data-entry="${activeEntry}"]`);
+    if (!row) return;
+    const rowTop = row.offsetTop;
+    if (rowTop < list.scrollTop) {
+      list.scrollTop = rowTop;
+    } else if (rowTop + row.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = rowTop + row.offsetHeight - list.clientHeight;
+    }
   }, [isPlaying, activeEntry]);
 
   const seek = useCallback(
@@ -357,7 +364,10 @@ export const WebAppReplayView = ({ events, isStreaming = false, isLoading = fals
             </button>
           ))}
         </div>
-        <div ref={listRef} className="max-h-[60vh] overflow-y-auto rounded-md border border-border">
+        <div
+          ref={listRef}
+          className="relative max-h-[60vh] overflow-y-auto rounded-md border border-border"
+        >
           {visibleEntries.length === 0 ? (
             <p className="p-4 text-center text-xs text-muted">No matching actions.</p>
           ) : (

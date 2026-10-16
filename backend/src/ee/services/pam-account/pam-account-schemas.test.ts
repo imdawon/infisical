@@ -636,7 +636,7 @@ describe("Web App accounts", () => {
     for (const url of ["http://127.0.0.1:55490", "https://grafana.internal/dashboards"]) {
       expect(() => validateConnectionDetails(PamAccountType.WebApp, { url })).not.toThrow();
     }
-    for (const url of ["file:///etc/passwd", "javascript:alert(1)", "ftp://files.internal", "not a url", ""]) {
+    for (const url of ["file:///etc/passwd", "data:text/html,hi", "ftp://files.internal", "not a url", ""]) {
       expect(() => validateConnectionDetails(PamAccountType.WebApp, { url })).toThrow();
     }
   });
@@ -647,11 +647,56 @@ describe("Web App accounts", () => {
     expect(isCredentialConfigured(PamAccountType.WebApp, { authMethod: "none" })).toBe(true);
   });
 
+  test("accept basic and header sign-in, and refuse a header value that could inject another header", () => {
+    expect(() =>
+      validateCredentials(PamAccountType.WebApp, { authMethod: "basic", username: "admin", password: "pw" })
+    ).not.toThrow();
+    expect(() =>
+      validateCredentials(PamAccountType.WebApp, {
+        authMethod: "header",
+        headerName: "X-Acme-Token",
+        headerValue: "t0k"
+      })
+    ).not.toThrow();
+    expect(() =>
+      validateCredentials(PamAccountType.WebApp, {
+        authMethod: "header",
+        headerName: "X-Acme-Token",
+        headerValue: "t0k\r\nX-Admin: true"
+      })
+    ).toThrow();
+    expect(() =>
+      validateCredentials(PamAccountType.WebApp, { authMethod: "header", headerName: "Bad Name", headerValue: "v" })
+    ).toThrow();
+  });
+
+  test("count a header or password as the stored secret, and keep it out of the dashboard", () => {
+    expect(isCredentialConfigured(PamAccountType.WebApp, { authMethod: "header", headerName: "X-Acme-Token" })).toBe(
+      false
+    );
+    expect(
+      isCredentialConfigured(PamAccountType.WebApp, {
+        authMethod: "header",
+        headerName: "X-Acme-Token",
+        headerValue: "t0k"
+      })
+    ).toBe(true);
+    expect(
+      sanitizeCredentials(PamAccountType.WebApp, {
+        authMethod: "header",
+        headerName: "X-Acme-Token",
+        headerValue: "t0k"
+      })
+    ).toEqual({ authMethod: "header", headerName: "X-Acme-Token" });
+  });
+
   test("route the gateway to the URL's host and port", async () => {
-    await expect(extractGatewayTarget(PamAccountType.WebApp, { url: "http://127.0.0.1:55490/admin" })).resolves.toEqual({
-      host: "127.0.0.1",
-      port: 55490
-    });
+    await expect(extractGatewayTarget(PamAccountType.WebApp, { url: "http://127.0.0.1:55490/admin" })).resolves.toEqual(
+      {
+        host: "127.0.0.1",
+        port: 55490
+      }
+    );
     await expect(extractGatewayTarget(PamAccountType.WebApp, { url: "https://grafana.internal" })).resolves.toEqual({
       host: "grafana.internal",
       port: 443
@@ -667,4 +712,3 @@ describe("Web App accounts", () => {
     expect(webApp.credentialFields.find((f) => f.key === "authMethod")).toMatchObject({ widget: "select" });
   });
 });
-

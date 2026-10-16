@@ -991,9 +991,34 @@ export const ACCOUNT_TYPE_CONFIGS = {
           { message: "URL must start with http:// or https://" }
         )
     }),
-    credentials: z.discriminatedUnion("authMethod", [z.object({ authMethod: z.literal("none") })]),
+    // The gateway adds these to requests for the account's own origin, so the user is signed in without ever
+    // seeing the credential
+    credentials: z.discriminatedUnion("authMethod", [
+      z.object({ authMethod: z.literal("none") }),
+      z.object({
+        authMethod: z.literal("basic"),
+        username: z.string().trim().min(1).max(255),
+        password: z.string().min(1).max(1024)
+      }),
+      z.object({
+        authMethod: z.literal("header"),
+        headerName: z
+          .string()
+          .trim()
+          .min(1)
+          .max(128)
+          .regex(new RE2(/^[A-Za-z0-9-]+$/), "Header name can only contain letters, digits and hyphens"),
+        headerValue: z
+          .string()
+          .min(1)
+          .max(4096)
+          .regex(new RE2(/^[^\r\n]*$/), "Header value can't contain line breaks")
+      })
+    ]),
     sanitizedCredentials: z.object({
-      authMethod: z.string().optional()
+      authMethod: z.string().optional(),
+      username: z.string().optional(),
+      headerName: z.string().optional()
     }),
     ui: {
       url: {
@@ -1004,8 +1029,19 @@ export const ACCOUNT_TYPE_CONFIGS = {
       authMethod: {
         label: "Sign-in Method",
         defaultValue: "none",
-        options: [{ label: "None", value: "none" }]
-      }
+        options: [
+          { label: "None", value: "none" },
+          { label: "Basic Auth", value: "basic" },
+          { label: "Header", value: "header" }
+        ]
+      },
+      username: { label: "Username" },
+      password: { label: "Password", widget: PamFieldWidget.Password, secret: true },
+      headerName: {
+        label: "Header Name",
+        tooltip: "The request header the app checks, for example Authorization or X-Api-Key."
+      },
+      headerValue: { label: "Header Value", widget: PamFieldWidget.Password, secret: true }
     }
   }
 } as const satisfies Partial<

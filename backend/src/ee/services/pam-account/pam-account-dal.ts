@@ -17,7 +17,11 @@ import {
 } from "../pam-account-rotation/pam-rotation-fns";
 import { PamTemplateSettingsSchema } from "../pam-account-template/pam-account-template-schemas";
 import { PamRecordingStorageBackend } from "../pam-session-recording/pam-recording-enums";
-import { ACCOUNT_TYPE_CONFIGS, accountTypeRequiresCredential } from "./pam-account-schemas";
+import {
+  ACCOUNT_TYPE_CONFIGS,
+  accountTypeRequiresCredential,
+  accountTypeRequiresRecording
+} from "./pam-account-schemas";
 
 const ROTATABLE_TYPE_VALUES = ROTATABLE_ACCOUNT_TYPES as readonly string[];
 
@@ -30,7 +34,9 @@ export type TPamRotationCandidate = {
   encryptedConnectionDetails: Buffer;
 };
 
-const recordingRequiredAccountTypes = [PamAccountType.Windows, PamAccountType.WindowsAd]
+// Derived from accountTypeRequiresRecording so the SQL readiness check can't drift from the TypeScript one
+const recordingRequiredAccountTypes = Object.values(PamAccountType)
+  .filter(accountTypeRequiresRecording)
   .map((type) => `'${type}'`)
   .join(", ");
 

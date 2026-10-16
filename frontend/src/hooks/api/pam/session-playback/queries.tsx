@@ -55,6 +55,8 @@ export type PlaybackDecryptState = {
   sessionComplete: boolean;
 };
 
+const PLAYBACK_PREFETCH_CHUNKS = 4;
+
 const fallbackUrlBuilderFor = (sessionId: string) => (chunkIndex: number) =>
   `/api/v1/pam/sessions/${sessionId}/chunks/${chunkIndex}/ciphertext`;
 
@@ -218,6 +220,30 @@ export const useDecryptedSessionLogs = (
 
         const maxIndex = sortedChunks.length ? sortedChunks[sortedChunks.length - 1].chunkIndex : 0;
 
+        // Chunks are fetched a few ahead in parallel but appended strictly in order, so playback can start on
+        // the first chunk while the rest download
+        const inFlight = new Map<number, ReturnType<typeof decryptOneChunk>>();
+        const prefetch = (from: number) => {
+          for (
+            let pos = from;
+            pos < Math.min(from + PLAYBACK_PREFETCH_CHUNKS, sortedChunks.length);
+            pos += 1
+          ) {
+            if (!inFlight.has(pos)) {
+              inFlight.set(
+                pos,
+                decryptOneChunk({
+                  chunk: sortedChunks[pos],
+                  sessionKey,
+                  projectId,
+                  sessionId,
+                  fallbackUrlBuilder
+                })
+              );
+            }
+          }
+        };
+
         setState((s) => ({
           ...s,
           totalChunks: sortedChunks.length,
@@ -238,14 +264,10 @@ export const useDecryptedSessionLogs = (
             events.push(marker);
             brokenChunks.push(marker);
           } else {
+            prefetch(chunkIdx);
             // eslint-disable-next-line no-await-in-loop
-            const r = await decryptOneChunk({
-              chunk: sortedChunks[chunkIdx],
-              sessionKey,
-              projectId,
-              sessionId,
-              fallbackUrlBuilder
-            });
+            const r = await (inFlight.get(chunkIdx) as ReturnType<typeof decryptOneChunk>);
+            inFlight.delete(chunkIdx);
             chunkIdx += 1;
             if (r.ok) {
               events.push(...(r.events as TSessionEvent[]));

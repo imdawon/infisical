@@ -7,10 +7,11 @@ export const WEB_APP_CHANNEL = "web-app";
 type RawEvent = { eventType?: string; channelType?: string; data?: string; elapsedTime?: number };
 
 type RecordedAction = {
-  kind: "mouse" | "key" | "navigate" | "request" | "blocked" | "nav" | "resize";
+  kind: "mouse" | "key" | "select" | "navigate" | "request" | "blocked" | "nav" | "resize";
   action?: string;
   target?: string;
   key?: string;
+  value?: string;
   url?: string;
   method?: string;
   status?: number;
@@ -60,6 +61,8 @@ const describeAction = (a: RecordedAction): Omit<TimelineEntry, "ms"> | null => 
       if (a.action === "down") return { kind: "click", label: `Clicked ${a.target || "the page"}` };
       if (a.action === "wheel") return { kind: "scroll", label: "Scrolled" };
       return null;
+    case "select":
+      return { kind: "click", label: `Chose "${a.value}"` };
     case "navigate":
       return a.url ? { kind: "navigate", label: `Navigated to ${a.url}` } : null;
     case "request": {

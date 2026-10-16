@@ -12,6 +12,7 @@ import {
   GatewayEvent,
   MESSAGE_TYPE_EVENT,
   MESSAGE_TYPE_FRAME,
+  SelectMenu,
   WebAppInput
 } from "./web-app-protocol";
 
@@ -35,6 +36,7 @@ export const useWebAppSession = ({ accountId, reason, mfaSessionId }: UseWebAppS
   const [endReason, setEndReason] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [blockedUrl, setBlockedUrl] = useState<string | null>(null);
+  const [selectMenu, setSelectMenu] = useState<SelectMenu | null>(null);
 
   const teardown = useCallback(() => {
     const socket = socketRef.current;
@@ -99,6 +101,13 @@ export const useWebAppSession = ({ accountId, reason, mfaSessionId }: UseWebAppS
         const event = JSON.parse(new TextDecoder().decode(payload)) as GatewayEvent;
         if (event.kind === "navigated" && event.url) setCurrentUrl(event.url);
         if (event.kind === "blocked" && event.url) setBlockedUrl(event.url);
+        if (event.kind === "select" && event.options && event.rect) {
+          setSelectMenu({
+            options: event.options,
+            selected: event.selected ?? -1,
+            rect: event.rect
+          });
+        }
         if (event.kind === "ended") setEndReason(event.reason ?? null);
       }
     });
@@ -160,6 +169,14 @@ export const useWebAppSession = ({ accountId, reason, mfaSessionId }: UseWebAppS
 
   const dismissBlocked = useCallback(() => setBlockedUrl(null), []);
 
+  const chooseSelectOption = useCallback(
+    (index: number) => {
+      setSelectMenu(null);
+      sendInput({ t: "select", index });
+    },
+    [sendInput]
+  );
+
   return {
     canvasRef,
     status,
@@ -168,6 +185,8 @@ export const useWebAppSession = ({ accountId, reason, mfaSessionId }: UseWebAppS
     currentUrl,
     blockedUrl,
     dismissBlocked,
+    selectMenu,
+    chooseSelectOption,
     disconnect,
     reconnect,
     sendInput

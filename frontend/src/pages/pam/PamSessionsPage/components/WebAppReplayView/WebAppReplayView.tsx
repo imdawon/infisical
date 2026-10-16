@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PauseIcon, PlayIcon, RotateCcwIcon, SearchIcon } from "lucide-react";
+import {
+  ExpandIcon,
+  Loader2Icon,
+  MaximizeIcon,
+  MinimizeIcon,
+  PauseIcon,
+  PlayIcon,
+  RotateCcwIcon,
+  SearchIcon,
+  ShrinkIcon
+} from "lucide-react";
 
 import { IconButton, InputGroup, InputGroupAddon, InputGroupInput } from "@app/components/v3";
 
@@ -13,6 +23,69 @@ import {
 type Props = {
   events: unknown[];
   isStreaming?: boolean;
+  // More chunks are still downloading; the replay plays what has arrived so far
+  isLoading?: boolean;
+};
+
+// Click or drag anywhere on the track to seek; clicks are marked so busy moments are easy to find.
+const Scrubber = ({
+  currentMs,
+  durationMs,
+  ticks,
+  onSeek
+}: {
+  currentMs: number;
+  durationMs: number;
+  ticks: number[];
+  onSeek: (ms: number) => void;
+}) => {
+  const seekTo = (e: React.PointerEvent<HTMLDivElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    const fraction = Math.min(Math.max((e.clientX - box.left) / box.width, 0), 1);
+    onSeek(fraction * durationMs);
+  };
+  const percent = durationMs > 0 ? (currentMs / durationMs) * 100 : 0;
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label="Replay position"
+      aria-valuemin={0}
+      aria-valuemax={durationMs}
+      aria-valuenow={Math.round(currentMs)}
+      aria-valuetext={formatReplayTime(currentMs)}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        seekTo(e);
+      }}
+      onPointerMove={(e) => {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") onSeek(Math.min(currentMs + 5000, durationMs));
+        if (e.key === "ArrowLeft") onSeek(Math.max(currentMs - 5000, 0));
+      }}
+      className="group relative flex h-5 flex-1 cursor-pointer touch-none items-center outline-none"
+    >
+      <div className="relative h-1.5 w-full rounded-full bg-foreground/15">
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-product-pam"
+          style={{ width: `${percent}%` }}
+        />
+        {ticks.map((ms) => (
+          <span
+            key={`tick-${ms}`}
+            className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-foreground/50"
+            style={{ left: `${(ms / durationMs) * 100}%` }}
+          />
+        ))}
+        <span
+          className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground shadow group-focus-visible:ring-2 group-focus-visible:ring-foreground/40"
+          style={{ left: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
 };
 
 const FILTERS: { label: string; kinds: TimelineKind[] | null }[] = [
@@ -43,11 +116,14 @@ const base64ToBytes = (data: string) => {
   return bytes;
 };
 
-export const WebAppReplayView = ({ events, isStreaming = false }: Props) => {
+export const WebAppReplayView = ({ events, isStreaming = false, isLoading = false }: Props) => {
   const { frames, timeline } = useMemo(() => parseWebAppRecording(events), [events]);
   const durationMs = Math.max(frames.at(-1)?.ms ?? 0, timeline.at(-1)?.ms ?? 0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const playerRef = useRef<HTMLDivElement | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const [currentMs, setCurrentMsState] = useState(0);
   const currentMsRef = useRef(0);
@@ -133,6 +209,20 @@ export const WebAppReplayView = ({ events, isStreaming = false }: Props) => {
     [setCurrentMs]
   );
 
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(document.fullscreenElement === playerRef.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      playerRef.current?.requestFullscreen().catch(() => {});
+    }
+  };
+
   const togglePlay = () => {
     if (!isPlaying && currentMs >= durationMs) setCurrentMs(0);
     setIsPlaying((playing) => !playing);
@@ -146,19 +236,39 @@ export const WebAppReplayView = ({ events, isStreaming = false }: Props) => {
     );
   }
 
-  const clickTicks = timeline.filter((e) => e.kind === "click" && durationMs > 0);
-  const percent = durationMs > 0 ? (currentMs / durationMs) * 100 : 0;
+  const clickTicks =
+    durationMs > 0 ? timeline.filter((e) => e.kind === "click").map((e) => e.ms) : [];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="flex min-w-0 flex-col gap-3">
+    <div
+      className={`grid gap-4 ${isExpanded ? "grid-cols-1" : "lg:grid-cols-[minmax(0,1fr)_320px]"}`}
+    >
+      <div
+        ref={playerRef}
+        className={`flex min-w-0 flex-col gap-3 ${isFullscreen ? "justify-center bg-black p-4" : ""}`}
+      >
         <button
           type="button"
           onClick={togglePlay}
           aria-label={isPlaying ? "Pause replay" : "Play replay"}
-          className="flex items-center justify-center overflow-hidden rounded-md border border-border bg-black"
+          className={`relative flex items-center justify-center overflow-hidden rounded-md border border-border bg-black ${
+            isFullscreen ? "min-h-0 flex-1" : ""
+          }`}
         >
-          <canvas ref={canvasRef} className="max-h-[60vh] max-w-full" />
+          <canvas
+            ref={canvasRef}
+            className={
+              isFullscreen || isExpanded
+                ? "max-h-[calc(100vh-6rem)] w-full object-contain"
+                : "max-h-[60vh] max-w-full"
+            }
+          />
+          {isLoading && (
+            <span className="absolute top-2 right-2 flex items-center gap-1.5 rounded bg-black/70 px-2 py-1 text-xs text-white">
+              <Loader2Icon className="size-3 animate-spin" />
+              Loading more…
+            </span>
+          )}
         </button>
         <div className="flex items-center gap-3">
           <IconButton
@@ -169,27 +279,12 @@ export const WebAppReplayView = ({ events, isStreaming = false }: Props) => {
           >
             {isPlaying ? <PauseIcon /> : <PlayIcon />}
           </IconButton>
-          <div className="relative flex-1">
-            <input
-              type="range"
-              min={0}
-              max={durationMs}
-              step={100}
-              value={currentMs}
-              onChange={(e) => seek(Number(e.target.value))}
-              aria-label="Replay position"
-              className="relative z-10 w-full accent-foreground"
-            />
-            <div className="pointer-events-none absolute inset-x-0 -bottom-1.5 h-1.5">
-              {clickTicks.map((tick) => (
-                <span
-                  key={`tick-${tick.ms}-${tick.label}`}
-                  className="absolute top-0 h-1.5 w-px bg-product-pam"
-                  style={{ left: `${(tick.ms / durationMs) * 100}%` }}
-                />
-              ))}
-            </div>
-          </div>
+          <Scrubber
+            currentMs={currentMs}
+            durationMs={durationMs}
+            ticks={clickTicks}
+            onSeek={seek}
+          />
           <span className="font-mono text-xs text-muted tabular-nums">
             {formatReplayTime(currentMs)} / {formatReplayTime(durationMs)}
           </span>
@@ -212,9 +307,26 @@ export const WebAppReplayView = ({ events, isStreaming = false }: Props) => {
           <IconButton variant="ghost-muted" size="sm" onClick={() => seek(0)} aria-label="Restart">
             <RotateCcwIcon />
           </IconButton>
-        </div>
-        <div className="h-1 overflow-hidden rounded-full bg-foreground/10" aria-hidden>
-          <div className="h-full bg-foreground/60" style={{ width: `${percent}%` }} />
+          {!isFullscreen && (
+            <IconButton
+              variant="ghost-muted"
+              size="sm"
+              onClick={() => setIsExpanded((v) => !v)}
+              aria-label={
+                isExpanded ? "Show timeline beside the video" : "Expand video to full width"
+              }
+            >
+              {isExpanded ? <ShrinkIcon /> : <ExpandIcon />}
+            </IconButton>
+          )}
+          <IconButton
+            variant="ghost-muted"
+            size="sm"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
+          </IconButton>
         </div>
       </div>
 

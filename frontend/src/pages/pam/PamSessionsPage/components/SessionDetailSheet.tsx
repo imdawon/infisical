@@ -487,7 +487,11 @@ export const SessionDetailSheet = ({ sessionId, isOpen, onOpenChange, onTerminat
                         }
                       >
                         {isWebAppSession ? (
-                          <WebAppReplayView events={events} isStreaming={isActive} />
+                          <WebAppReplayView
+                            events={events}
+                            isStreaming={isActive}
+                            isLoading={isLogsLoading}
+                          />
                         ) : (
                           <RdpReplayView events={filteredEvents} isStreaming={isActive} />
                         )}

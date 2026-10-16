@@ -9,6 +9,7 @@ import { DisconnectedScreen } from "./DisconnectedScreen";
 import { useWebAppInput } from "./useWebAppInput";
 import { useWebAppSession, WebAppSessionStatus } from "./useWebAppSession";
 import { WebAccessStatusCard } from "./WebAccessStatusCard";
+import { WebAppSelectMenu } from "./WebAppSelectMenu";
 
 type WebAppContentProps = {
   account: TPamAccount;
@@ -62,6 +63,8 @@ export const WebAppContent = ({ account, reason, mfaSessionId }: WebAppContentPr
     currentUrl,
     blockedUrl,
     dismissBlocked,
+    selectMenu,
+    chooseSelectOption,
     disconnect,
     reconnect,
     sendInput
@@ -88,6 +91,17 @@ export const WebAppContent = ({ account, reason, mfaSessionId }: WebAppContentPr
           aria-label={`Remote browser for ${account.name}`}
           className={`max-h-full max-w-full outline-none ${isLive ? "" : "invisible"}`}
         />
+        {selectMenu && isLive && (
+          <WebAppSelectMenu
+            menu={selectMenu}
+            canvasRef={canvasRef}
+            containerRef={containerRef}
+            onChoose={(index) => {
+              chooseSelectOption(index);
+              canvasRef.current?.focus();
+            }}
+          />
+        )}
         {blockedUrl && isLive && (
           <div className="absolute top-3 left-1/2 z-10 flex max-w-[90%] -translate-x-1/2 items-center gap-2 rounded-md border border-danger/40 bg-card px-3 py-2 text-xs shadow">
             <ShieldX className="size-4 shrink-0 text-danger" />

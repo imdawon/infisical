@@ -27,6 +27,7 @@ describe("parseWebAppRecording", () => {
       frame(0.5),
       action(1, { kind: "navigate", url: "http://app/" }),
       action(2, { kind: "mouse", action: "move", x: 1, y: 1 }),
+      action(2.5, { kind: "select", value: "high" }),
       action(3, { kind: "mouse", action: "down", target: 'button "Submit order"' }),
       action(3.1, { kind: "mouse", action: "up" }),
       action(3.2, { kind: "request", method: "POST", url: "http://app/orders", status: 303 }),
@@ -38,6 +39,7 @@ describe("parseWebAppRecording", () => {
     expect(frames.map((f) => f.ms)).toEqual([500, 4500]);
     expect(timeline).toEqual([
       { ms: 1000, kind: "navigate", label: "Navigated to http://app/" },
+      { ms: 2500, kind: "click", label: 'Chose "high"' },
       { ms: 3000, kind: "click", label: 'Clicked button "Submit order"' },
       { ms: 3200, kind: "request", label: "POST http://app/orders → 303" },
       { ms: 4000, kind: "blocked", label: "Blocked https://example.com/" }

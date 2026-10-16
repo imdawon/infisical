@@ -5,12 +5,22 @@ export const MESSAGE_TYPE_EVENT = 0x02;
 export const MESSAGE_TYPE_INPUT = 0x10;
 export const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
+export type SelectMenu = {
+  options: { label: string; disabled?: boolean }[];
+  selected: number;
+  // The <select>'s box in the remote page's CSS pixels
+  rect: { x: number; y: number; w: number; h: number };
+};
+
 export type GatewayEvent = {
-  kind: "ready" | "navigated" | "ended" | "blocked";
+  kind: "ready" | "navigated" | "ended" | "blocked" | "select";
   url?: string;
   w?: number;
   h?: number;
   reason?: string;
+  options?: SelectMenu["options"];
+  selected?: number;
+  rect?: SelectMenu["rect"];
 };
 
 export type FrameMeta = { seq: number; ts: number; w: number; h: number };
@@ -30,7 +40,9 @@ export type WebAppInput =
   | { t: "wheel"; x: number; y: number; dx: number; dy: number }
   | { t: "key"; kind: "down" | "up"; key: string; code: string; text: string; modifiers: number }
   | { t: "resize"; w: number; h: number }
-  | { t: "nav"; action: "back" | "forward" | "reload" };
+  | { t: "nav"; action: "back" | "forward" | "reload" }
+  // The option picked in the viewer-drawn <select> menu, or -1 to dismiss it
+  | { t: "select"; index: number };
 
 export const encodeInput = (input: WebAppInput): ArrayBuffer => {
   const json = new TextEncoder().encode(JSON.stringify(input));
